@@ -144,6 +144,51 @@ async function runEvaluatorTests() {
     assert(health.status === 200, 'GET /health returns 200 OK');
     assert(health.body.status === 'healthy', 'Health status is "healthy"');
 
+    // 10. Dynamic Distance Scaling & Rate Cards Verification (4 km vs 25 km)
+    console.log('\n[Test Group 10: Dynamic Proportional Scaling (4 km trip vs 25 km trip)]');
+    const { calculateDynamicFares } = require('../src/mapService');
+    
+    // Test 4 km trip
+    const f4 = calculateDynamicFares(4, 1);
+    assert(f4.cab.fare === 116, '4 km Cab fare is ₹116 (₹50 base + 4*16.5)', `Got ₹${f4.cab.fare}`);
+    assert(f4.bike.fare === 61, '4 km Bike fare is ₹61 (₹25 base + 4*9)', `Got ₹${f4.bike.fare}`);
+    assert(f4.bus.fare === 10, '4 km Bus fare is ₹10 (0-5 km slab)', `Got ₹${f4.bus.fare}`);
+    assert(f4.metro.fare === 15, '4 km Metro fare is ₹15 (0-5 km slab)', `Got ₹${f4.metro.fare}`);
+    assert(f4.cab.durationMins === 15, '4 km Cab duration is ~15 mins ((4/25)*60 + 5)', `Got ${f4.cab.durationMins}m`);
+    assert(f4.metro.durationMins === 12, '4 km Metro duration is ~12 mins ((4/35)*60 + 5)', `Got ${f4.metro.durationMins}m`);
+    assert(f4.netSavings === 101, '4 km Net Savings is ₹101 (₹116 - ₹15)', `Got ₹${f4.netSavings}`);
+    assert(f4.co2Averted === 0.500, '4 km CO2 averted is 0.500 kg', `Got ${f4.co2Averted} kg`);
+
+    // Test 25 km trip
+    const f25 = calculateDynamicFares(25, 1);
+    assert(f25.cab.fare === 463, '25 km Cab fare is ₹463 (₹50 base + 25*16.5)', `Got ₹${f25.cab.fare}`);
+    assert(f25.bike.fare === 250, '25 km Bike fare is ₹250 (₹25 base + 25*9)', `Got ₹${f25.bike.fare}`);
+    assert(f25.bus.fare === 25, '25 km Bus fare is ₹25 (12-25 km slab)', `Got ₹${f25.bus.fare}`);
+    assert(f25.metro.fare === 50, '25 km Metro fare is ₹50 (21-32 km slab)', `Got ₹${f25.metro.fare}`);
+    assert(f25.cab.durationMins === 65, '25 km Cab duration is ~65 mins ((25/25)*60 + 5)', `Got ${f25.cab.durationMins}m`);
+    assert(f25.metro.durationMins === 48, '25 km Metro duration is ~48 mins ((25/35)*60 + 5)', `Got ${f25.metro.durationMins}m`);
+    assert(f25.netSavings === 413, '25 km Net Savings is ₹413 (₹463 - ₹50)', `Got ₹${f25.netSavings}`);
+    assert(f25.co2Averted === 3.125, '25 km CO2 averted is 3.125 kg', `Got ${f25.co2Averted} kg`);
+
+    // Proportional scaling assertions
+    assert(f25.cab.fare > f4.cab.fare * 3, 'Cab fare scales dynamically with distance (> 3x)');
+    assert(f25.metro.durationMins > f4.metro.durationMins * 3, 'Travel time scales proportionally with distance (> 3x)');
+    assert(f25.netSavings > f4.netSavings * 3, 'Net savings scale proportionally with distance');
+
+    // End-to-end /chat API tests with output table & header validation
+    const testShortRoute = await makeRequest('POST', '/chat', { message: 'From Station to Market for 1 person' });
+    assert(testShortRoute.status === 200, 'POST /chat short route returns 200 OK');
+    assert(testShortRoute.body.response.includes('📍 Route:'), 'Response contains prominent distance header');
+    assert(testShortRoute.body.response.includes('| Mode | Estimated Fare | Travel Time | CO₂ Footprint |'), 'Response contains required Markdown comparison table');
+    assert(testShortRoute.body.response.includes('Net Savings'), 'Response contains Net Savings summary');
+
+    const testLongRoute = await makeRequest('POST', '/chat', { message: 'From Station to Airport for 1 person' });
+    assert(testLongRoute.status === 200, 'POST /chat long route returns 200 OK');
+    assert(testLongRoute.body.response.includes('📍 Route:'), 'Response contains prominent distance header for long route');
+    assert(testLongRoute.body.response.includes('| Mode | Estimated Fare | Travel Time | CO₂ Footprint |'), 'Response contains Markdown comparison table for long route');
+    assert(testLongRoute.body.route_data.distanceKm > testShortRoute.body.route_data.distanceKm, 'Long route has greater distance than short route');
+
+
     console.log('\n====================================================');
     console.log(`📊 Test Summary: ${passed} Passed, ${failed} Failed`);
     console.log('====================================================\n');
