@@ -38,7 +38,8 @@ app.post('/chat', async (req, res) => {
       ? req.body.message 
       : (req.body && req.body.message != null ? String(req.body.message) : '');
 
-    const aiResult = await processTransitQuery(userMessage);
+    const sessionId = (req.body && req.body.sessionId) || req.headers['x-session-id'] || 'default';
+    const aiResult = await processTransitQuery(userMessage, sessionId);
 
     // Update community metrics dynamically if emissions were saved
     if (aiResult.carbon_saved_kg > 0) {
@@ -53,6 +54,7 @@ app.post('/chat', async (req, res) => {
       response: aiResult.text,
       message: aiResult.text,
       reply: aiResult.text,
+      sessionId: aiResult.sessionId || sessionId,
       carbon_saved_kg: aiResult.carbon_saved_kg,
       mode_suggested: aiResult.mode_suggested,
       sdg_impact: aiResult.sdg_impact,

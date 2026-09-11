@@ -188,6 +188,77 @@ async function runEvaluatorTests() {
     assert(testLongRoute.body.response.includes('| Mode | Estimated Fare | Travel Time | CO₂ Footprint |'), 'Response contains Markdown comparison table for long route');
     assert(testLongRoute.body.route_data.distanceKm > testShortRoute.body.route_data.distanceKm, 'Long route has greater distance than short route');
 
+    // 11. Specific Corridor Verification: Kankariya Lake to Thalej (Metro Station & ₹20 Fare)
+    console.log('\n[Test Group 11: Kankariya Lake to Thalej (Metro Station & ₹20 Fare)]');
+    const testKankaria = await makeRequest('POST', '/chat', { message: 'kankariya lake to thalej' });
+    assert(testKankaria.status === 200, 'POST /chat for kankariya lake to thalej returns 200 OK');
+    assert(
+      testKankaria.body.response.includes('Take Metro') || testKankaria.body.response.includes('take metro') || testKankaria.body.response.includes('Metro'),
+      'Recommends taking the Metro for Kankaria to Thaltej corridor'
+    );
+    assert(
+      testKankaria.body.response.includes('₹20') || (testKankaria.body.route_data && testKankaria.body.route_data.fareData.metro.fare === 20),
+      'Accurately calculates Metro fare as ₹20 each person (NOT ₹50)'
+    );
+    assert(
+      testKankaria.body.response.includes('Kankaria') && (testKankaria.body.response.includes('Thaltej') || testKankaria.body.response.includes('thalej')),
+      'Identifies Kankaria East and Thaltej metro stations'
+    );
+    assert(
+      testKankaria.body.route_data && testKankaria.body.route_data.metroFeasible === true,
+      'Marks route as metro feasible'
+    );
+
+    // 12. Multi-Turn Conversational Memory Verification
+    console.log('\n[Test Group 12: Multi-Turn Conversational Memory & Contextual Follow-Up]');
+    const memorySessionId = 'eval-memory-session-' + Date.now();
+
+    // Turn 1: Initial journey request
+    const memTurn1 = await makeRequest('POST', '/chat', {
+      message: 'From Kankaria Lake to Thaltej for 1 person',
+      sessionId: memorySessionId
+    });
+    assert(memTurn1.status === 200, 'Memory Turn 1 returns 200 OK');
+    assert(memTurn1.body.route_data && memTurn1.body.route_data.passengers === 1, 'Turn 1 captures 1 passenger');
+
+    // Turn 2: Follow-up changing passengers without specifying origin/destination
+    const memTurn2 = await makeRequest('POST', '/chat', {
+      message: 'what about for 4 people?',
+      sessionId: memorySessionId
+    });
+    assert(memTurn2.status === 200, 'Memory Turn 2 returns 200 OK');
+    assert(
+      memTurn2.body.response.includes('Kankaria') && memTurn2.body.response.includes('Thaltej'),
+      'Turn 2 remembers origin (Kankaria Lake) and destination (Thaltej)'
+    );
+    assert(
+      memTurn2.body.route_data && memTurn2.body.route_data.passengers === 4,
+      'Turn 2 updates calculation to 4 passengers'
+    );
+    assert(
+      memTurn2.body.response.includes('₹80') || (memTurn2.body.route_data && memTurn2.body.route_data.fareData.metro.total === 80),
+      'Turn 2 calculates total metro fare for 4 people as ₹80 (4 * ₹20)'
+    );
+
+    // Turn 3: Follow-up asking about metro station and ticket price
+    const memTurn3 = await makeRequest('POST', '/chat', {
+      message: 'is there a metro station if yes ask what is the ticket price',
+      sessionId: memorySessionId
+    });
+    assert(memTurn3.status === 200, 'Memory Turn 3 returns 200 OK');
+    assert(
+      memTurn3.body.response.includes('Kankaria East') || memTurn3.body.response.includes('Kankaria'),
+      'Turn 3 references Kankaria East Metro Station from remembered chat'
+    );
+    assert(
+      memTurn3.body.response.includes('Thaltej'),
+      'Turn 3 references Thaltej Metro Station from remembered chat'
+    );
+    assert(
+      memTurn3.body.response.includes('₹20'),
+      'Turn 3 confirms the ticket price is ₹20 per person'
+    );
+
 
     console.log('\n====================================================');
     console.log(`📊 Test Summary: ${passed} Passed, ${failed} Failed`);

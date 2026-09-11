@@ -26,6 +26,13 @@ document.addEventListener('DOMContentLoaded', () => {
   const runApiTestBtn = document.getElementById('run-api-test-btn');
   const testOutput = document.getElementById('test-output');
 
+  // Maintain persistent conversation session for multi-turn conversational memory
+  let currentSessionId = sessionStorage.getItem('greentransit_session_id');
+  if (!currentSessionId) {
+    currentSessionId = 'session_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9);
+    sessionStorage.setItem('greentransit_session_id', currentSessionId);
+  }
+
   let isSending = false;
 
   /**
@@ -282,10 +289,14 @@ document.addEventListener('DOMContentLoaded', () => {
       const response = await fetch('/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text })
+        body: JSON.stringify({ message: text, sessionId: currentSessionId })
       });
 
       const data = await response.json();
+      if (data && data.sessionId) {
+        currentSessionId = data.sessionId;
+        sessionStorage.setItem('greentransit_session_id', currentSessionId);
+      }
       removeTypingIndicator();
 
       const replyText = data.response || data.message || data.reply || "GreenTransit AI response received.";
