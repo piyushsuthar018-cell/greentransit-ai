@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GreenTransit AI — Compare Hybrid & Solo Urban Transit Paths</title>
+  <meta name="description" content="Intelligent sustainable route comparator advancing UN SDG 11 & SDG 13. Compare Hybrid Metro, Auto-Rickshaw, Uber/Ola, and Rapido prices and carbon emissions.">
+  
+  <!-- Modern Typography -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet">
+  
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- Ambient background glow elements -->
+  <div class="ambient-glow glow-1"></div>
+  <div class="ambient-glow glow-2"></div>
+
+  <div class="app-wrapper">
+    <!-- Clean Minimalist Header -->
+    <header class="app-header">
+      <div class="header-brand">
+        <div class="brand-badge">🌱</div>
+        <div>
+          <div class="brand-title">GreenTransit <span class="ai-text">AI</span></div>
+          <div class="brand-caption">Compare Hybrid & Solo Routes • UN SDG 11 & SDG 13</div>
+        </div>
+      </div>
+
+      <div class="header-pills">
+        <div class="sdg-tag sdg-11"><span class="dot"></span> SDG 11.2 Cities</div>
+        <div class="sdg-tag sdg-13"><span class="dot"></span> SDG 13.2 Climate</div>
+        <div class="api-tag" id="evaluator-pill" title="Arena Evaluator API is online">
+          <span class="live-dot"></span> POST /chat Active
+        </div>
+        <button class="spec-btn" id="evaluator-info-btn">API Contract</button>
+      </div>
+    </header>
+
+    <!-- Interactive Journey Planner Bar -->
+    <section class="journey-bar-card">
+      <form id="journey-form" class="journey-form">
+        <div class="input-field-group">
+          <label for="input-origin">📍 Current Location (From)</label>
+          <input 
+            type="text" 
+            id="input-origin" 
+            placeholder="e.g. Silver Oak University, Gota" 
+            required
+          />
+        </div>
+
+        <div class="journey-swap-btn" id="swap-locations-btn" title="Swap From and To">
+          ⇄
+        </div>
+
+        <div class="input-field-group">
+          <label for="input-destination">🏁 Where do you want to go (To)</label>
+          <input 
+            type="text" 
+            id="input-destination" 
+            placeholder="e.g. Rabari Colony, Amraiwadi" 
+            required
+          />
+        </div>
+
+        <div class="input-field-group passengers-group">
+          <label for="select-passengers">👥 Passengers</label>
+          <select id="select-passengers">
+            <option value="1">1 Person (Solo)</option>
+            <option value="2" selected>2 People</option>
+            <option value="3">3 People</option>
+            <option value="4">4 People</option>
+            <option value="5">5+ People</option>
+          </select>
+        </div>
+
+        <button type="submit" id="compare-btn" class="compare-btn">
+          <span>Compare All Paths</span>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
+        </button>
+      </form>
+    </section>
+
+    <!-- Conversational Arena -->
+    <main class="chat-container">
+      
+      <!-- Chat Messages Scroll Area -->
+      <div class="chat-viewport" id="chat-messages">
+        
+        <!-- Welcome Message -->
+        <div class="msg-row bot-row" id="welcome-message-row">
+          <div class="msg-avatar">🌱</div>
+          <div class="msg-body bot-body">
+            <div class="route-header-pill">UN SDG 11 & SDG 13 Sustainable Mobility</div>
+            <p><strong>Namaste!</strong> I am <strong>GreenTransit AI</strong>. Tell me where you are starting and where you want to go, and I will instantly compare all <strong>Hybrid Transit</strong> and <strong>Solo Rides</strong> for your group:</p>
+            
+            <div class="features-summary">
+              <div class="summary-pill">🚇 <strong>Hybrid Metro:</strong> Lowest fare & cuts 80% CO2</div>
+              <div class="summary-pill">🛺 <strong>Auto Rickshaw:</strong> CNG / Uber Auto per-person split</div>
+              <div class="summary-pill">🚗 <strong>Cabs:</strong> Uber Go / Ola Mini AC comfort</div>
+              <div class="summary-pill">🏍️ <strong>Rapido:</strong> Bike taxi for solo commuters</div>
+            </div>
+
+            <p style="margin-top: 10px;">Click below to try our example route on <strong>SG Highway</strong>:</p>
+            <div class="chips-tray" id="initial-chips">
+              <button class="chip" data-query="From Silver Oak to Rabari Colony for 2 people">🌿 Silver Oak ➔ Rabari Colony (2 people)</button>
+              <button class="chip" data-query="From Silver Oak to Rabari Colony for 1 person">🏍️ Silver Oak ➔ Rabari Colony (Solo)</button>
+              <button class="chip" data-query="From Silver Oak to Rabari Colony for 4 people">👥 Silver Oak ➔ Rabari Colony (4 people)</button>
+              <button class="chip" data-query="What is UN SDG 11.2?">🎯 UN SDG 11.2 Target</button>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Quick Route Suggestions -->
+      <div class="quick-tray" id="quick-prompts">
+        <span class="quick-label">Suggestions:</span>
+        <button class="quick-chip" data-query="Compare routes from Silver Oak to Rabari Colony for 2 people">📍 Silver Oak to Rabari Colony (2 People)</button>
+        <button class="quick-chip" data-query="Compare routes from Silver Oak to Rabari Colony for 1 person">⚡ Solo Ride (Rapido vs Metro)</button>
+        <button class="quick-chip" data-query="Calculate carbon footprint for 15 km drive vs metro">🌿 15 km Drive vs Metro</button>
+        <button class="quick-chip" data-query="How does public transit help SDG 13?">🌍 SDG 13 Climate Action</button>
+      </div>
+
+      <!-- Chat Input Area -->
+      <form class="chat-input-bar" id="chat-form">
+        <input 
+          type="text" 
+          id="chat-input" 
+          placeholder="Ask anything, or type: 'From Silver Oak to Rabari Colony for 3 people'..." 
+          autocomplete="off" 
+          required
+        />
+        <button type="submit" id="send-btn" class="send-action-btn" title="Send message">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+        </button>
+      </form>
+    </main>
+
+    <!-- Evaluator Spec Modal -->
+    <div class="modal-backdrop" id="evaluator-modal">
+      <div class="modal-box">
+        <div class="modal-top">
+          <div class="modal-heading">⚙️ Arena Evaluator API Contract</div>
+          <button class="modal-exit" id="modal-close-btn">&times;</button>
+        </div>
+        <div class="modal-content">
+          <div class="contract-details">
+            <div><strong>Endpoint:</strong> <code>POST http://localhost:3000/chat</code></div>
+            <div><strong>Header:</strong> <code>Content-Type: application/json</code></div>
+            <div><strong>Request Body:</strong></div>
+            <pre class="json-code">{"message": "From Silver Oak to Rabari Colony for 2 people"}</pre>
+            <div><strong>Response Body:</strong></div>
+            <pre class="json-code">{
+  "status": "success",
+  "response": "### 🚦 Route & Price Comparison...",
+  "message": "### 🚦 Route & Price Comparison...",
+  "reply": "### 🚦 Route & Price Comparison...",
+  "carbon_saved_kg": 2.8,
+  "mode_suggested": "Hybrid Metro + Feeder Auto"
+}</pre>
+          </div>
+          <button class="ping-btn" id="run-api-test-btn">Run Live Ping to POST /chat</button>
+          <div class="ping-result" id="test-output">Click above to execute live test...</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

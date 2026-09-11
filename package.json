@@ -1,0 +1,25 @@
+{
+  "name": "greentransit-ai",
+  "version": "1.0.0",
+  "description": "GreenTransit AI - Sustainable Urban Transit Chatbot advancing UN SDG 11 & SDG 13",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node test/evaluator.test.js"
+  },
+  "keywords": [
+    "sdg11",
+    "sdg13",
+    "sustainable-transit",
+    "chatbot",
+    "green-mobility",
+    "carbon-calculator"
+  ],
+  "author": "GreenTransit Team",
+  "license": "MIT",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2"
+  }
+}
