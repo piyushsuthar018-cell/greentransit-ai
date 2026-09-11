@@ -303,7 +303,7 @@ document.addEventListener('DOMContentLoaded', () => {
       appendMessage('bot', replyText, data.action_chips, data.carbon_saved_kg, data.route_data);
     } catch (err) {
       removeTypingIndicator();
-      appendMessage('bot', "⚠️ Error connecting to GreenTransit AI on port 3000. Please ensure server is running.");
+      appendMessage('bot', "⚠️ Error connecting to GreenTransit AI. Please ensure the server is running.");
       console.error(err);
     } finally {
       isSending = false;
