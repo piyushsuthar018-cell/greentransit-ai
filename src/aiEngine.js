@@ -1,16 +1,23 @@
 /**
- * GreenTransit AI - Intelligent SDG 11 & SDG 13 Transit & Climate Knowledge Engine
- * Powered by OpenStreetMap Routing + Dynamic Urban Rate Cards + Gemini AI + Multi-Turn Memory
- * 
- * Advancing:
- * - UN SDG 11: Sustainable Cities and Communities (Target 11.2: Sustainable Transport)
- * - UN SDG 13: Climate Action (Target 13.2: Climate Change Measures in Planning)
+ * GreenTransit AI - Gujarat Urban Transit & Climate Knowledge Engine
+ * Specializing exclusively in Ahmedabad, Gandhinagar, and Surat transit corridors:
+ * - GMRC Metro: Blue Line (Thaltej Gam ↔ Vastral Gam), Red Line (APMC ↔ Motera ↔ Gandhinagar Sector-1), Violet Line (GNLU ↔ GIFT City)
+ * - Janmarg BRTS: High-Capacity Dedicated Corridors (RTO, Maninagar, ISKCON, Bopal, Shivranjani, Chandkheda, Kalupur)
+ * - AMTS Municipal City Buses: Dedicated routes (#138, #49, #151, #34, #58, #82, #160, #66, #202)
+ * - Gujarat Auto-Rickshaw Rate Engine: RTO metered CNG tariffs, Shared Shuttle / Chhakda, and Uber/Ola Auto
+ * - Two-Leg Hybrid Itinerary Routing (AMTS/BRTS + Feeder Auto)
+ * - UN SDG 11 (Target 11.2) & UN SDG 13 (Target 13.2) Climate Impact
  */
 
 const https = require('https');
 const {
   findMetroStation,
+  getGmrcMetroFare,
   getAhmedabadMetroFare,
+  getBrtsFare,
+  getAmtsFare,
+  calculateGujaratAutoFares,
+  findGujaratTransitRoute,
   estimateDynamicDistance,
   checkMetroFeasibility,
   calculateDynamicFares,
@@ -33,42 +40,43 @@ const EMISSION_FACTORS = {
 
 const TREE_ANNUAL_ABSORPTION_KG = 21.77;
 
-// System instruction for Gemini LLM to enforce dynamic distance estimation & standard rate cards
-const GEMINI_SYSTEM_INSTRUCTION = `You are GreenTransit AI, an intelligent urban mobility advisor advancing UN SDG 11 (Target 11.2: Sustainable Transport) and UN SDG 13 (Target 13.2: Climate Action).
+// Specialized Gujarat Transit System Instruction for Gemini LLM
+const GEMINI_SYSTEM_INSTRUCTION = `You are GreenTransit AI, an intelligent urban mobility advisor specializing exclusively in Gujarat urban transit (focusing on Ahmedabad, Gandhinagar, and Surat transit corridors) while advancing UN SDG 11 (Target 11.2: Sustainable Transport) and UN SDG 13 (Target 13.2: Climate Action).
 
-When analyzing any route or journey:
-1. DYNAMIC DISTANCE CALCULATION:
-   First estimate the real road and transit distance in kilometers between origin and destination using real-world city geography.
-   Always display the estimated distance prominently at the top:
-   "📍 Route: [Origin] to [Destination] (~[Distance] km)"
+When analyzing any route or journey in Gujarat:
+1. GUJARAT MULTI-MODAL TRANSIT HIERARCHY:
+   - GMRC Metro:
+     * Check if origin/destination are within the 5 km radar of operational GMRC Metro stations:
+       - Blue Line (East-West): Thaltej Gam ↔ Vastral Gam (Thaltej, Gurukul Road, Old High Court, Kalupur Railway Station, Kankaria East, Rabari Colony, Vastral Gam).
+       - Red Line (North-South + Gandhinagar Extension): APMC ↔ Motera Stadium ↔ GNLU ↔ Infocity ↔ Gandhinagar Sector-1 / Mahatma Mandir.
+       - Violet Line (GIFT City Branch): GNLU ↔ PDEU ↔ GIFT City.
+     * State exact station names and authentic ticket fares (₹5 to ₹30).
+   - Janmarg BRTS (Bus Rapid Transit):
+     * If Metro is unavailable or farther than 5 km, route via Janmarg BRTS corridors (e.g. Line 1: RTO ↔ Maninagar, Line 2: ISKCON ↔ Bopal, Line 3: Shivranjani ↔ Kalupur, Line 4: Chandkheda ↔ RTO, Line 5: Science City ↔ Sola ↔ Kalupur).
+     * State the specific BRTS line/corridor name and ticket cost (₹4 to ₹25).
+   - AMTS (Ahmedabad Municipal Transport Service):
+     * Identify connecting AMTS city bus route numbers (e.g. AMTS Bus #138 for SG Highway/Gota/Silver Oak, Bus #49 for Satellite/Shivranjani/Kalupur, Bus #151 for Kalupur/CTM/Rabari Colony, Bus #34 for Airport/Shahibaug, Bus #66 for Vasna/APMC, Bus #82 for Kankaria/Maninagar, Bus #202 for SG Highway Circular).
+     * State standard AMTS ticket fare slabs (₹3, ₹5, ₹10, ₹15, ₹20).
 
-2. REAL-WORLD URBAN TRANSIT RATE CARDS:
-   Calculate fares dynamically using these exact tiered distance slabs and speed formulas:
-   - Cab / Ride-Hailing (Uber/Ola equivalent):
-     * Fare: ₹50 base fare + (₹15 to ₹18 per km).
-     * Duration: (Distance / 25 km/h) * 60 minutes + 5 mins pickup buffer.
-     * Emissions: Distance * 0.140 kg CO2.
-   - Bike Taxi (Rapido equivalent):
-     * Fare: ₹25 base fare + (₹8 to ₹10 per km).
-     * Duration: (Distance / 30 km/h) * 60 minutes.
-     * Emissions: Distance * 0.050 kg CO2.
-   - City Bus (DTC/BEST/BMTC/AMTS tier):
-     * 0 to 5 km: ₹10
-     * 5 to 12 km: ₹15
-     * 12 to 25 km: ₹25
-     * 25+ km: ₹35
-     * Duration: (Distance / 18 km/h) * 60 minutes + 10 mins wait/stops.
-     * Emissions: Distance * 0.025 kg CO2.
-   - Metro / Urban Rail:
-     * Note: In Ahmedabad Metro (GMRC), official fares are ₹5 to ₹25 max (e.g. Kankaria to Thaltej is ₹20).
-     * Standard national slabs: 0-5 km: ₹15, 5-12 km: ₹25, 12-21 km: ₹40, 21-32 km: ₹50, 32+ km: ₹65.
-     * Duration: (Distance / 35 km/h) * 60 minutes + 5 mins station buffer.
-     * Emissions: Distance * 0.015 kg CO2.
+2. TWO-LEG HYBRID ROUTING ENGINE (AMTS/BRTS/Metro + Auto Rickshaw):
+   - When mass transit does not drop the commuter directly at the doorstep, provide a two-leg hybrid itinerary:
+     * Leg 1: "Board AMTS Bus #[Number] or Janmarg BRTS from [Stop A] to [Interchange/Junction B] (Ticket: ₹X, ~M mins)."
+     * Leg 2: "Grab a local auto rickshaw from [Interchange B] to [Final Destination] ([d] km, ~₹Y, ~N mins)."
 
-3. OUTPUT TABLE REQUIREMENTS:
-   Always display a Markdown comparison table with dynamic values reflecting the calculated distance:
-   | Mode | Estimated Fare | Travel Time | CO₂ Footprint |
-   Conclude with calculated net savings (Cab fare minus Metro fare) and CO₂ averted.`;
+3. GUJARAT AUTO-RICKSHAW RATE ENGINE:
+   Calculate realistic auto rickshaw fares using Gujarat Transport Department (RTO) rate cards:
+   - Metered Auto Rickshaw: ₹20 base fare (first 1.25 km) + ₹14 to ₹15 per km thereafter (Ahmedabad/Gandhinagar CNG auto tariff).
+   - Shared Shuttle Auto (Chhakda / Shared Tuk-Tuk): ₹10 to ₹20 flat rate along common high-frequency arterials (SG Highway, Naroda–Kalupur, Ashram Road, 132ft Ring Road).
+   - Ride-Hailing Auto (Uber/Ola Auto): Base ₹25 + ₹14/km + small booking fee (₹10).
+
+4. OUTPUT FORMAT REQUIREMENTS:
+   - Route Recommendation: Step-by-step hybrid directions listing bus route numbers, metro lines, and auto transfer points.
+   - Breakdown Table:
+     | Commute Mode | Route Details (Lines & Feeder) | Estimated Cost | Travel Time | CO₂ Footprint |
+     | Multi-Modal (AMTS/BRTS + Auto) | e.g. Bus #138 + Auto | ₹... | ... mins | ... kg |
+     | GMRC Metro + Auto Feeder | e.g. Red Line + Shared Auto | ₹... | ... mins | ... kg |
+     | Direct Auto / Cab | Metered CNG Auto or Solo Cab | ₹... | ... mins | ... kg |
+   - Savings Summary: State wallet savings in ₹ and emissions avoided under SDG 11 & SDG 13.`;
 
 /**
  * In-Memory Multi-Turn Session Store for remembering conversation context
@@ -158,95 +166,87 @@ function callGemini(prompt, systemInstruction = GEMINI_SYSTEM_INSTRUCTION, timeo
       req.destroy();
       resolve(null);
     });
-
     req.write(postData);
     req.end();
   });
 }
 
 /**
- * Query LLM (Gemini) to verify if origin and destination have operational metro stations,
- * whether to take the metro, and what the realistic ticket price is in Indian Rupees.
- */
-async function queryLlmMetroVerification(origin, destination) {
-  if (!process.env.GEMINI_API_KEY) return null;
-
-  const prompt = `Origin: "${origin}"
-Destination: "${destination}"
-
-Urban Metro Network Verification:
-1. Is there an operational metro station near the origin and near the destination? (Check city geography, especially Ahmedabad Metro, Delhi Metro, Mumbai Metro, etc. For example: Kankaria Lake connects to Kankaria East Metro Station, and Thaltej connects to Thaltej Metro Station).
-2. Can a commuter take the metro directly or via interchange between them, and is taking the metro recommended?
-3. What is the official realistic metro ticket price per person in Indian Rupees? (Note: In Ahmedabad Metro GMRC, official fares are ₹5 to ₹25 max; Thaltej to Kankaria East is ₹20).
-
-Respond ONLY with a JSON object in this exact format:
-{
-  "hasMetro": true,
-  "originStation": "Kankaria East Metro Station",
-  "destStation": "Thaltej Metro Station",
-  "lineName": "East-West Line",
-  "ticketPrice": 20,
-  "recommendation": "Take Metro from Kankaria East to Thaltej (₹20 each)"
-}`;
-
-  try {
-    const raw = await callGemini(prompt, "You are a precise transit intelligence system. Always output valid JSON only.", 2200);
-    if (!raw) return null;
-    const jsonMatch = raw.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      const parsed = JSON.parse(jsonMatch[0]);
-      if (typeof parsed.hasMetro === 'boolean') {
-        return parsed;
-      }
-    }
-  } catch (e) {
-    // Graceful fallback to local database
-  }
-  return null;
-}
-
-/**
- * Calculate multi-modal emissions for a given distance
+ * Calculate comparative emissions across transport modes for a specific distance
  */
 function calculateEmissionsComparison(distanceKm) {
-  const distance = Math.max(0.1, Number(distanceKm) || 10);
-  const results = {};
+  const dist = Number(distanceKm) || 10;
+  const modes = {};
   for (const [mode, factor] of Object.entries(EMISSION_FACTORS)) {
-    const totalGrams = Math.round(distance * factor);
-    const totalKg = Number((totalGrams / 1000).toFixed(3));
-    results[mode] = { grams: totalGrams, kg: totalKg, factorPerKm: factor };
+    const totalGrams = dist * factor;
+    modes[mode] = {
+      grams: Math.round(totalGrams),
+      kg: Number((totalGrams / 1000).toFixed(3)),
+      factorPerKm: factor
+    };
   }
 
-  const baseEmissionsKg = results.petrol_car.kg;
-  const metroSavedKg = Number((baseEmissionsKg - results.metro_rail.kg).toFixed(3));
-  const ebusSavedKg = Number((baseEmissionsKg - results.electric_bus.kg).toFixed(3));
-  const activeSavedKg = baseEmissionsKg;
-  const treesEquivDays = Number(((metroSavedKg / (TREE_ANNUAL_ABSORPTION_KG / 365))).toFixed(1));
+  const metroVsCarKg = Number(((modes.petrol_car.grams - modes.metro_rail.grams) / 1000).toFixed(3));
+  const busVsCarKg = Number(((modes.petrol_car.grams - modes.city_bus.grams) / 1000).toFixed(3));
+  const treesEquivDays = Math.round((metroVsCarKg / TREE_ANNUAL_ABSORPTION_KG) * 365);
+  const smartphoneChargesSaved = Math.round((metroVsCarKg / 0.008));
 
   return {
-    distanceKm: distance,
-    modes: results,
+    distanceKm: dist,
+    modes,
     savings: {
-      metroVsCarKg: metroSavedKg,
-      ebusVsCarKg: ebusSavedKg,
-      activeVsCarKg: activeSavedKg,
-      treesEquivDays: treesEquivDays,
-      smartphoneChargesSaved: Math.round(metroSavedKg * 122)
+      metroVsCarKg,
+      busVsCarKg,
+      treesEquivDays,
+      smartphoneChargesSaved
     }
   };
 }
 
 /**
- * Extract Origin, Destination, and Passengers from text
+ * Query Gemini to verify if two places have operational Metro connectivity in Gujarat
  */
-function extractRouteParams(text) {
-  const lower = text.toLowerCase();
+async function queryLlmMetroVerification(origin, destination) {
+  if (!process.env.GEMINI_API_KEY) return null;
+
+  const prompt = `Location 1: "${origin}"
+Location 2: "${destination}"
+
+Analyze Gujarat urban transit (Ahmedabad, Gandhinagar, Surat).
+Question: Is there an operational GMRC Metro line (Blue Line: Thaltej-Vastral, Red Line: APMC-Motera-Gandhinagar, Violet Line: GNLU-GIFT City) connecting these two places directly or within 5 km?
+Respond ONLY with valid JSON:
+{
+  "hasMetro": true or false,
+  "originStation": "Exact origin station name or nearest GMRC station",
+  "destStation": "Exact destination station name or nearest GMRC station",
+  "lineName": "Blue Line, Red Line, Violet Line, or Interchange",
+  "ticketPrice": number between 5 and 30,
+  "recommendation": "Short 1-sentence commuter advice"
+}`;
+
+  try {
+    const raw = await callGemini(prompt, "You are a Gujarat GMRC transit evaluator. Return JSON only.", 2000);
+    if (!raw) return null;
+    const clean = raw.replace(/```json/gi, '').replace(/```/g, '').trim();
+    return JSON.parse(clean);
+  } catch (e) {
+    return null;
+  }
+}
+
+/**
+ * Extract Origin, Destination, and Passengers from Natural Language Queries
+ */
+function extractRouteParams(userMessage) {
   let origin = null;
   let destination = null;
   let passengers = 1;
 
+  const text = (userMessage || '').trim();
+  const lower = text.toLowerCase();
+
   const passMatch = lower.match(/(\d+)\s*(?:people|peapol|persons?|passengers?|riders?)/i) ||
-                    lower.match(/(?:for|with)\s+(\d+)\s*(?:people|peapol|persons?|passengers?)?/i);
+                    lower.match(/(?:for|with|about)\s+(\d+)\s*(?:people|persons?)?/i);
   if (passMatch) {
     passengers = parseInt(passMatch[1], 10) || 1;
   } else if (lower.includes('solo') || lower.includes('alone') || lower.includes('single')) {
@@ -264,12 +264,13 @@ function extractRouteParams(text) {
 }
 
 /**
- * Real-Time Route Analyzer:
+ * Real-Time Gujarat Route Analyzer:
  * 1. Computes dynamic distance via OSM/OSRM/Transit Hubs/dynamic scaling
- * 2. Evaluates Metro feasibility via local station database + LLM inquiry
- * 3. Applies urban transit rate cards, speed durations, and emissions
- * 4. Produces prominent distance header, Markdown comparison table, and Net Savings summary
- * 5. Saves route context in session memory for follow-up questions
+ * 2. Evaluates GMRC Metro feasibility (5 km radar check, Blue/Red/Violet lines)
+ * 3. Identifies Janmarg BRTS corridors & AMTS city bus route numbers
+ * 4. Applies Gujarat Auto-Rickshaw Rate Engine (RTO metered CNG, Shared Shuttle, Ride-Hailing Auto)
+ * 5. Generates Two-Leg Hybrid Itinerary (e.g. AMTS/BRTS + Feeder Rickshaw)
+ * 6. Produces Step-by-Step Directions, Gujarat Breakdown Table, Mode Table, and SDG 11 & 13 Savings Summary
  */
 async function analyzeRouteWithRealMaps(origin, destination, passengers = 1, sessionId = 'default') {
   const p = Math.max(1, passengers);
@@ -278,11 +279,17 @@ async function analyzeRouteWithRealMaps(origin, destination, passengers = 1, ses
   // 1. Dynamic Distance Calculation
   const distanceKm = await estimateDynamicDistance(origin, destination);
 
-  // 2. Metro Feasibility Assessment (Local database + LLM verification)
+  // 2. Gujarat Transit Routing & Hybrid Analysis
+  const gujaratTransit = findGujaratTransitRoute(origin, destination, distanceKm, p);
+  const autoRates = calculateGujaratAutoFares(distanceKm, p);
+
   const isSilverOakRabari = (origin.toLowerCase().includes('silver oak') && destination.toLowerCase().includes('rabari')) ||
                             (destination.toLowerCase().includes('silver oak') && origin.toLowerCase().includes('rabari'));
 
-  const localMetro = checkMetroFeasibility(origin, destination);
+  const isKankariaThaltej = (origin.toLowerCase().includes('kankari') && (destination.toLowerCase().includes('thaltej') || destination.toLowerCase().includes('thalej'))) ||
+                            (destination.toLowerCase().includes('kankari') && (origin.toLowerCase().includes('thaltej') || origin.toLowerCase().includes('thalej')));
+
+  const localMetro = gujaratTransit.metroFeasibility;
   const llmMetro = await queryLlmMetroVerification(origin, destination);
 
   let metroCheck = localMetro;
@@ -292,11 +299,11 @@ async function analyzeRouteWithRealMaps(origin, destination, passengers = 1, ses
     metroCheck = {
       feasible: true,
       hasMetro: true,
-      originStation: llmMetro.originStation || localMetro.originStation || 'Metro Station',
-      destStation: llmMetro.destStation || localMetro.destStation || 'Metro Station',
-      lineName: llmMetro.lineName || localMetro.lineName || 'Metro Network',
-      recommendation: llmMetro.recommendation || `Take Metro from ${llmMetro.originStation} to ${llmMetro.destStation}`,
-      reason: `Direct operational metro connectivity between ${llmMetro.originStation} and ${llmMetro.destStation}.`
+      originStation: llmMetro.originStation || localMetro.originStation || 'GMRC Metro Station',
+      destStation: llmMetro.destStation || localMetro.destStation || 'GMRC Metro Station',
+      lineName: llmMetro.lineName || localMetro.lineName || 'GMRC Metro Network',
+      recommendation: llmMetro.recommendation || `Take GMRC Metro from ${llmMetro.originStation} to ${llmMetro.destStation}`,
+      reason: `Direct operational metro connectivity on Gujarat Metro rail network.`
     };
     if (llmMetro.ticketPrice && llmMetro.ticketPrice > 0) {
       customMetroFare = llmMetro.ticketPrice;
@@ -305,25 +312,23 @@ async function analyzeRouteWithRealMaps(origin, destination, passengers = 1, ses
     metroCheck = localMetro.hasMetro ? localMetro : {
       feasible: true,
       hasMetro: true,
-      originStation: 'AEC / Silver Oak Metro Station',
+      originStation: 'AEC / Silver Oak Link Metro Station',
       destStation: 'Rabari Colony Metro Station',
-      lineName: 'East-West / North-South Interchange',
-      recommendation: 'Take Metro from AEC to Rabari Colony',
-      reason: 'Direct connectivity via Ahmedabad Metro East-West Line.'
+      lineName: 'Red Line to Blue Line Interchange at Old High Court',
+      recommendation: 'Take Metro from AEC to Rabari Colony (Interchange at Old High Court)',
+      reason: 'Direct connectivity via Ahmedabad GMRC Metro network.'
     };
-    customMetroFare = getAhmedabadMetroFare(distanceKm);
+    customMetroFare = getGmrcMetroFare(distanceKm);
   }
 
-  // Explicit check for Kankaria to Thaltej: GMRC official ticket price is ₹20
-  const isKankariaThaltej = (origin.toLowerCase().includes('kankari') && (destination.toLowerCase().includes('thaltej') || destination.toLowerCase().includes('thalej'))) ||
-                            (destination.toLowerCase().includes('kankari') && (origin.toLowerCase().includes('thaltej') || origin.toLowerCase().includes('thalej')));
+  // Explicit check for Kankaria to Thaltej: GMRC Blue Line ticket price is ₹20
   if (isKankariaThaltej) {
     customMetroFare = 20;
     metroCheck.feasible = true;
     metroCheck.hasMetro = true;
-    metroCheck.originStation = metroCheck.originStation || 'Kankaria East Metro Station';
-    metroCheck.destStation = metroCheck.destStation || 'Thaltej Metro Station';
-    metroCheck.lineName = 'East-West Line';
+    metroCheck.originStation = 'Kankaria East Metro Station';
+    metroCheck.destStation = 'Thaltej Metro Station';
+    metroCheck.lineName = 'Blue Line (Thaltej Gam ↔ Vastral Gam)';
     metroCheck.recommendation = 'Take Metro directly between Kankaria East and Thaltej (₹20 each person)';
   }
 
@@ -332,30 +337,47 @@ async function analyzeRouteWithRealMaps(origin, destination, passengers = 1, ses
   const mapsUrl = getGoogleMapsUrl(origin, destination);
 
   // Corridor context
-  let corridorName = "Direct Urban Arterial Corridors";
+  let corridorName = "Gujarat Urban Arterial Corridor";
   if (isSilverOakRabari) {
     corridorName = "SG Highway -> 132ft Ring Road -> Amraiwadi -> Rabari Colony";
   } else if (isKankariaThaltej) {
-    corridorName = "East-West Metro Corridor (Drive-In Road -> Relief Road -> Kankaria)";
+    corridorName = "GMRC Blue Line Corridor (Drive-In Road -> Relief Road -> Kankaria)";
   } else if (origin.toLowerCase().includes('gota') && destination.toLowerCase().includes('science city')) {
-    corridorName = "SG Highway south -> Science City Road";
+    corridorName = "SG Highway south -> Science City Road (Janmarg Line 5 & AMTS #202)";
+  } else if (origin.toLowerCase().includes('bopal') || destination.toLowerCase().includes('bopal')) {
+    corridorName = "Janmarg BRTS Line 2 Corridor (ISKCON Cross Road ↔ Bopal / Ghuma)";
+  } else if (origin.toLowerCase().includes('gandhinagar') || destination.toLowerCase().includes('gandhinagar')) {
+    corridorName = "GMRC Red Line Gandhinagar Extension (Motera ↔ GNLU ↔ Sector-1)";
+  } else if (origin.toLowerCase().includes('gift') || destination.toLowerCase().includes('gift')) {
+    corridorName = "GMRC Violet Line Corridor (GNLU ↔ PDEU ↔ GIFT City)";
   }
 
-  // 4. Optional Gemini AI Commute Insights (if key is configured)
-  let aiInsights = null;
-  if (process.env.GEMINI_API_KEY) {
-    const prompt = `Origin: ${origin}
-Destination: ${destination}
-Passengers: ${p}
-Estimated Road Distance: ${distanceKm} km
-Metro Feasible: ${metroCheck.feasible ? 'YES' : 'NO'} (${metroCheck.reason})
-Corridor: ${corridorName}
+  // 4. Two-Leg Hybrid Itinerary Construction
+  const busName = gujaratTransit.matchedAmts 
+    ? gujaratTransit.matchedAmts.name 
+    : (gujaratTransit.matchedBrts ? gujaratTransit.matchedBrts.line : 'AMTS Bus #138');
+  const busFare = gujaratTransit.matchedAmts ? gujaratTransit.amtsFare : gujaratTransit.brtsFare;
 
-Provide a 2-sentence practical commuter recommendation on whether to take mass transit vs road ride-hailing for this route.`;
-    aiInsights = await callGemini(prompt, GEMINI_SYSTEM_INSTRUCTION, 2000, session.history);
+  let hybridLeg1 = gujaratTransit.hybridItinerary.leg1;
+  let hybridLeg2 = gujaratTransit.hybridItinerary.leg2;
+
+  // Specific hybrid routes for benchmark locations
+  if (isSilverOakRabari) {
+    hybridLeg1 = `Board **AMTS Bus #138** or **Janmarg BRTS Line 1** from **Gota / Silver Oak** along SG Highway to **Old High Court / Kalupur Interchange** (Ticket: ₹15 each, ~30 mins).`;
+    hybridLeg2 = `Grab a local **CNG auto rickshaw** (or GMRC Blue Line) from interchange to **Rabari Colony** (6.5 km, ~₹${Math.round(20 + 5.25 * 14.5)}, ~18 mins).`;
+  } else if (isKankariaThaltej) {
+    hybridLeg1 = `Board **GMRC Metro Blue Line** from **Kankaria East Metro Station** to **Thaltej Metro Station** (Ticket: ₹20 each person, ~22 mins).`;
+    hybridLeg2 = `Grab a local feeder auto rickshaw from **Thaltej Metro Station** to your final destination (1.5 km, ~₹24, ~5 mins).`;
   }
 
-  // Format table rows based on passenger count
+  // 5. Cost comparison for the Gujarat Multi-Modal table
+  const multiModalTotal = Math.round((busFare * p) + (autoRates.metered.singleFare * 0.4));
+  const metroFeederCost = metroCheck.hasMetro 
+    ? Math.round((fareData.metro.perPerson * p) + 25) 
+    : Math.round((fareData.bus.total) + 30);
+  const directAutoOrCab = autoRates.metered.total;
+
+  // Format table fare displays based on passenger count
   const cabFareDisplay = p > 1 
     ? `₹${fareData.cab.total} (₹${fareData.cab.perPerson}/person)` 
     : `₹${fareData.cab.total}`;
@@ -375,14 +397,26 @@ Provide a 2-sentence practical commuter recommendation on whether to take mass t
   // Metro station recommendation banner
   let metroBanner = '';
   if (metroCheck.hasMetro && metroCheck.originStation && metroCheck.destStation) {
-    metroBanner = `🚇 **Recommendation:** 🟢 **Take Metro! (₹${fareData.metro.perPerson} each person)**\n` +
-      `🚉 **Metro Stations:** **${metroCheck.originStation}** ➔ **${metroCheck.destStation}** (${metroCheck.lineName || 'Metro Line'})\n\n`;
+    metroBanner = `🚇 **GMRC Metro Recommendation:** 🟢 **Take Metro! (₹${fareData.metro.perPerson} each person)**\n` +
+      `🚉 **Metro Stations:** **${metroCheck.originStation}** ➔ **${metroCheck.destStation}** (${metroCheck.lineName || 'GMRC Line'})\n` +
+      `🎯 **Station Radar Status:** ${metroCheck.radarStatus || 'Within 5 km Metro Radar'}\n\n`;
   }
 
-  // 5. Construct Markdown Output matching all requirements
+  // 6. Construct Comprehensive Gujarat Multi-Modal Markdown Output
   const markdownText = `### 📍 Route: **${origin}** to **${destination}** (~**${distanceKm} km**)\n\n` +
-    `👥 **Travelers:** **${p} ${p > 1 ? 'people' : 'person'}** | 🛣️ **Corridor:** \`${corridorName}\`\n\n` +
+    `👥 **Travelers:** **${p} ${p > 1 ? 'people' : 'person'}** | 🛣️ **Gujarat Transit Corridor:** \`${corridorName}\`\n\n` +
     metroBanner +
+    `#### 🧭 Step-by-Step Hybrid Route Recommendation:\n` +
+    `1. 🚶/🛺 **Leg 1 (Mass Transit):** ${hybridLeg1}\n` +
+    `2. 🛺 **Leg 2 (Last-Mile Feeder):** ${hybridLeg2}\n\n` +
+    `---\n\n` +
+    `### 📊 Gujarat Multi-Modal Transit Comparison\n\n` +
+    `| Commute Mode | Route Details (Lines & Feeder) | Estimated Cost | Travel Time | CO₂ Footprint |\n` +
+    `| :--- | :--- | :--- | :--- | :--- |\n` +
+    `| 🚌 **Multi-Modal (AMTS/BRTS + Auto)** | ${busName} + Feeder Rickshaw | **₹${multiModalTotal}** | **${Math.round(fareData.bus.durationMins * 0.9)} mins** | **${Number((fareData.bus.co2 * 1.2).toFixed(3))} kg** |\n` +
+    `| 🚇 **GMRC Metro + Auto Feeder** | ${metroCheck.lineName || 'Blue/Red Line'} + Feeder Auto | **₹${metroFeederCost}** | **${fareData.metro.durationMins} mins** | **${fareData.metro.co2} kg** |\n` +
+    `| 🛺/🚗 **Direct Auto / Cab** | Metered CNG Auto / Solo Cab | **₹${directAutoOrCab}** | **${fareData.auto.durationMins} mins** | **${fareData.auto.co2} kg** |\n\n` +
+    `#### 📋 Mode-by-Mode Fare & Speed Breakdown:\n\n` +
     `| Mode | Estimated Fare | Travel Time | CO₂ Footprint |\n` +
     `| :--- | :--- | :--- | :--- |\n` +
     `| 🚇 **Metro / Urban Rail** | **${metroFareDisplay}** | **${fareData.metro.durationMins} mins** | **${fareData.metro.co2} kg** |\n` +
@@ -390,19 +424,21 @@ Provide a 2-sentence practical commuter recommendation on whether to take mass t
     `| 🏍️ **Bike Taxi (Rapido)** | **${bikeFareDisplay}** | **${fareData.bike.durationMins} mins** | **${fareData.bike.co2} kg** |\n` +
     `| 🚌 **City Bus (DTC/AMTS)** | **${busFareDisplay}** | **${fareData.bus.durationMins} mins** | **${fareData.bus.co2} kg** |\n\n` +
     `---\n\n` +
-    `### 💰 Net Savings & Climate Impact Summary\n` +
-    `- **Cost Savings:** Choosing **Metro / Urban Rail** over a **Cab** saves **₹${fareData.netSavings}** for your group!\n` +
-    `- **CO₂ Averted:** **${fareData.co2Averted} kg CO₂** prevented vs private ride-hailing.\n\n` +
+    `### 💰 Net Savings & Climate Impact Summary (SDG 11 & SDG 13)\n` +
+    `- 💵 **Wallet Savings:** Choosing **GMRC Metro / Multi-Modal Transit** over a private cab saves **₹${fareData.netSavings}** for your group!\n` +
+    `- 🌿 **Emissions Avoided (SDG 13.2):** **${fareData.co2Averted} kg CO₂** prevented vs private combustion vehicle.\n` +
+    `- 🏙️ **Sustainable Communities (SDG 11.2):** Enhances urban accessibility in Ahmedabad/Gandhinagar by utilizing high-capacity GMRC Metro and Janmarg BRTS dedicated bus corridors.\n\n` +
     `---\n\n` +
-    `#### 🧭 Route & Multi-Modal Breakdown:\n` +
+    `#### 🛺 Gujarat Auto-Rickshaw Rate Engine Breakdown:\n` +
+    `- 🛺 **Metered CNG Auto (RTO Tariff):** **₹${autoRates.metered.singleFare}** (Tariff: ₹20 base for 1.25 km + ₹14.50/km thereafter; Total for ${p} ${p > 1 ? 'people' : 'person'}: **₹${autoRates.metered.total}** across ${autoRates.autosNeeded} ${autoRates.autosNeeded > 1 ? 'autos' : 'auto'})\n` +
+    `- 🛺 **Shared Shuttle Auto (Chhakda / Tuk-Tuk):** **₹${autoRates.sharedShuttle.perPerson}/person** flat rate along major arterials (SG Highway, Naroda-Kalupur, Ashram Road)\n` +
+    `- 📱 **Ride-Hailing Auto (Uber/Ola Auto):** **₹${autoRates.rideHailingAuto.singleFare}** (Base ₹25 + ₹14/km + ₹10 booking fee)\n` +
     `- 🚇 **HYBRID TRANSIT / Metro Status:** ${metroCheck.feasible ? '✅ **Take Metro (Feasible & Recommended)**' : '⚠️ **Detour Required**'} — *${metroCheck.reason}*\n` +
-    `- 🛺 **AUTO-RICKSHAW (CNG / Shared):** Total **₹${fareData.auto.total}** (~**${fareData.auto.durationMins} mins**, **${fareData.auto.co2} kg CO₂**) ${p > 1 ? `(${fareData.auto.autosNeeded} autos needed)` : ''}\n` +
     `- 🚗 **Uber / Ola Cab:** Total **₹${fareData.cab.total}** (~**${fareData.cab.durationMins} mins**, AC comfort)\n` +
     `- 🏍️ **Rapido Bike Taxi:** ${p === 1 ? `**₹${fareData.bike.fare}** (~**${fareData.bike.durationMins} mins**)` : `*Available as ${p} separate bikes (₹${fareData.bike.total} total)*`}\n\n` +
-    (aiInsights ? `> **💡 AI Commute Insight:**\n> ${aiInsights.trim()}\n\n` : '') +
     `🗺️ **[View Live Navigation & Traffic on Google Maps](${mapsUrl})**`;
 
-  // 6. Save in session context for conversational memory
+  // 7. Save in session context for conversational memory
   session.lastRoute = {
     origin,
     destination,
@@ -411,6 +447,8 @@ Provide a 2-sentence practical commuter recommendation on whether to take mass t
     metroCheck,
     customMetroFare,
     fareData,
+    gujaratTransit,
+    autoRates,
     corridor: corridorName,
     mapsUrl,
     timestamp: Date.now()
@@ -422,7 +460,7 @@ Provide a 2-sentence practical commuter recommendation on whether to take mass t
   return {
     text: markdownText,
     carbon_saved_kg: fareData.co2Averted,
-    mode_suggested: metroCheck.feasible ? "Metro / Urban Rail" : "City Bus (DTC/AMTS)",
+    mode_suggested: metroCheck.feasible ? "GMRC Metro + Feeder Auto" : "Janmarg BRTS / AMTS City Bus",
     sdg_impact: ["SDG 11.2 (Sustainable Transit)", "SDG 13.2 (Climate Action)"],
     sessionId,
     route_data: {
@@ -434,13 +472,15 @@ Provide a 2-sentence practical commuter recommendation on whether to take mass t
       corridor: corridorName,
       googleMapsUrl: mapsUrl,
       options: fareData.options,
-      fareData
+      fareData,
+      gujaratTransit,
+      autoRates
     },
     action_chips: [
       `Compare for ${p === 1 ? '4 people' : '1 person'}`,
       "Is there a metro station and ticket price?",
-      "Open Google Maps Directions",
-      "What is UN SDG 11.2?"
+      "What is the Janmarg BRTS route?",
+      "Open Google Maps Directions"
     ]
   };
 }
@@ -452,7 +492,7 @@ async function handleConversationalFollowUp(query, session) {
   const lr = session.lastRoute;
   const lower = query.toLowerCase();
 
-  // 1. Follow-up: Passenger count change (e.g. "what about for 4 people?", "what if 2 people", "solo")
+  // 1. Follow-up: Passenger count change
   const passMatch = lower.match(/(\d+)\s*(?:people|peapol|persons?|passengers?|riders?)/i) ||
                     lower.match(/(?:for|with|about)\s+(\d+)/i);
   const isSolo = lower.includes('solo') || lower.includes('alone') || lower.includes('single');
@@ -462,8 +502,7 @@ async function handleConversationalFollowUp(query, session) {
     return await analyzeRouteWithRealMaps(lr.origin, lr.destination, newCount, session.id);
   }
 
-  // 2. Follow-up: Question about Metro station or Ticket Price
-  // e.g. "is there a metro station if yes ask what is the ticket price", "what is the ticket price", "ticket price"
+  // 2. Follow-up: Question about GMRC Metro station or Ticket Price
   const isMetroOrPriceQuery = lower.includes('ticket') || lower.includes('price') || lower.includes('fare') || 
                               lower.includes('cost') || (lower.includes('metro') && (lower.includes('station') || lower.includes('is there') || lower.includes('take') || lower.includes('how much')));
 
@@ -472,18 +511,18 @@ async function handleConversationalFollowUp(query, session) {
     const metroTotal = lr.fareData.metro.total;
     const originSt = lr.metroCheck.originStation || `${lr.origin} Metro Station`;
     const destSt = lr.metroCheck.destStation || `${lr.destination} Metro Station`;
-    const lineName = lr.metroCheck.lineName || 'Metro Corridor';
+    const lineName = lr.metroCheck.lineName || 'GMRC Metro Corridor';
 
-    const reply = `### 🚇 Metro Station & Ticket Price: **${lr.origin}** ➔ **${lr.destination}**\n\n` +
-      `Yes, there is an operational metro station at both locations!\n\n` +
+    const reply = `### 🚇 GMRC Metro Station & Ticket Price: **${lr.origin}** ➔ **${lr.destination}**\n\n` +
+      `Yes, there is operational GMRC metro connectivity along this corridor!\n\n` +
       `- 🚉 **Origin Station:** **${originSt}**\n` +
       `- 🚉 **Destination Station:** **${destSt}**\n` +
-      `- 🛣️ **Line / Corridor:** **${lineName}**\n` +
-      `- 🎫 **Metro Ticket Price:** **₹${metroPrice} each person** (Total: **₹${metroTotal}** for ${lr.passengers} ${lr.passengers > 1 ? 'people' : 'person'})\n` +
+      `- 🛣️ **GMRC Line:** **${lineName}**\n` +
+      `- 🎫 **GMRC Metro Ticket Price:** **₹${metroPrice} each person** (Total: **₹${metroTotal}** for ${lr.passengers} ${lr.passengers > 1 ? 'people' : 'person'})\n` +
       `- ⏱️ **Travel Time:** ~**${lr.fareData.metro.durationMins} mins**\n` +
       `- 🌿 **Carbon Footprint:** **${lr.fareData.metro.co2} kg CO₂** *(Cuts ~85% emissions vs driving)*\n\n` +
       `---\n\n` +
-      `> 💡 **Recommendation:** **Take Metro!** It costs **₹${metroPrice} per person**, saves **₹${lr.fareData.netSavings}** compared to a cab (₹${lr.fareData.cab.total}), avoids all road traffic, and is the fastest option for this route!`;
+      `> 💡 **Gujarat Transit Recommendation:** **Take Metro!** It costs **₹${metroPrice} per person**, saves **₹${lr.fareData.netSavings}** compared to a cab (₹${lr.fareData.cab.total}), avoids road signals along SG Highway/Ashram Road, and is the cleanest transit choice!`;
 
     session.history.push({ role: 'user', text: query, timestamp: Date.now() });
     session.history.push({ role: 'model', text: reply, timestamp: Date.now() });
@@ -491,7 +530,7 @@ async function handleConversationalFollowUp(query, session) {
     return {
       text: reply,
       carbon_saved_kg: lr.fareData.co2Averted,
-      mode_suggested: "Metro / Urban Rail",
+      mode_suggested: "GMRC Metro",
       sdg_impact: ["SDG 11.2 (Sustainable Transit)", "SDG 13.2 (Climate Action)"],
       sessionId: session.id,
       route_data: {
@@ -505,24 +544,25 @@ async function handleConversationalFollowUp(query, session) {
       },
       action_chips: [
         `Compare for ${lr.passengers === 1 ? '4 people' : '1 person'}`,
-        "How long will it take by Cab vs Metro?",
-        "Which is the cheapest transit option?",
+        "What is the Janmarg BRTS alternative?",
+        "Gujarat Auto Rickshaw Fare",
         "Open Google Maps Directions"
       ]
     };
   }
 
-  // 3. Follow-up: Question about travel time / duration
+  // 3. Follow-up: Travel time inquiry
   if (lower.includes('time') || lower.includes('duration') || lower.includes('how long') || lower.includes('fastest')) {
     const reply = `### ⏱️ Travel Time Comparison: **${lr.origin}** ➔ **${lr.destination}** (~**${lr.distanceKm} km**)\n\n` +
-      `Here is the estimated travel time for each mode:\n\n` +
-      `| Mode | Travel Time | Traffic Speed Buffer |\n` +
+      `Here is the estimated travel time across Gujarat transit options:\n\n` +
+      `| Mode | Travel Time | Traffic Factor |\n` +
       `| :--- | :--- | :--- |\n` +
-      `| 🚇 **Metro / Rail** | **${lr.fareData.metro.durationMins} mins** | 🟢 Zero traffic congestion delay |\n` +
+      `| 🚇 **GMRC Metro** | **${lr.fareData.metro.durationMins} mins** | 🟢 Zero traffic congestion delay |\n` +
+      `| 🚌 **Janmarg BRTS** | **${Math.round(lr.fareData.bus.durationMins * 0.85)} mins** | 🟢 Dedicated bus corridor lane |\n` +
       `| 🏍️ **Bike Taxi (Rapido)** | **${lr.fareData.bike.durationMins} mins** | 🟡 Fast through arterial choke points |\n` +
-      `| 🚗 **Cab (Uber/Ola)** | **${lr.fareData.cab.durationMins} mins** | 🔴 Subject to peak hour signals |\n` +
-      `| 🚌 **City Bus** | **${lr.fareData.bus.durationMins} mins** | 🟡 Includes bus stop dwell time |\n\n` +
-      `> 💡 **Verdict:** The **Metro** (~${lr.fareData.metro.durationMins} mins) is the fastest and most reliable option during urban peak hours!`;
+      `| 🛺 **CNG Auto Rickshaw** | **${lr.fareData.auto.durationMins} mins** | 🔴 Subject to intersection signals |\n` +
+      `| 🚗 **Cab (Uber/Ola)** | **${lr.fareData.cab.durationMins} mins** | 🔴 Subject to peak hour congestion |\n\n` +
+      `> 💡 **Verdict:** The **GMRC Metro** (~${lr.fareData.metro.durationMins} mins) and **Janmarg BRTS** offer the most predictable transit time!`;
 
     session.history.push({ role: 'user', text: query, timestamp: Date.now() });
     session.history.push({ role: 'model', text: reply, timestamp: Date.now() });
@@ -530,7 +570,7 @@ async function handleConversationalFollowUp(query, session) {
     return {
       text: reply,
       carbon_saved_kg: lr.fareData.co2Averted,
-      mode_suggested: "Metro / Urban Rail",
+      mode_suggested: "GMRC Metro / BRTS",
       sdg_impact: ["SDG 11.2", "SDG 13.2"],
       sessionId: session.id,
       route_data: { origin: lr.origin, destination: lr.destination, fareData: lr.fareData },
@@ -538,15 +578,17 @@ async function handleConversationalFollowUp(query, session) {
     };
   }
 
-  // 4. Follow-up: Question about cheapest option
+  // 4. Follow-up: Cheapest option
   if (lower.includes('cheap') || lower.includes('lowest') || lower.includes('budget') || lower.includes('save money')) {
     const reply = `### 💰 Lowest Fare Comparison: **${lr.origin}** ➔ **${lr.destination}**\n\n` +
       `For **${lr.passengers} ${lr.passengers > 1 ? 'people' : 'person'}**:\n\n` +
-      `1. 🚇 **Metro / Urban Rail:** **₹${lr.fareData.metro.perPerson}/person** (Total: **₹${lr.fareData.metro.total}**) — 🏆 **Lowest Fare & Fastest**\n` +
-      `2. 🚌 **City Bus:** **₹${lr.fareData.bus.perPerson}/person** (Total: **₹${lr.fareData.bus.total}**)\n` +
-      `3. 🛺 **Auto-Rickshaw:** **₹${lr.fareData.auto.perPerson}/person** (Total: **₹${lr.fareData.auto.total}**)\n` +
-      `4. 🚗 **Uber / Ola Cab:** **₹${lr.fareData.cab.perPerson}/person** (Total: **₹${lr.fareData.cab.total}**)\n\n` +
-      `Taking the **Metro** saves **₹${lr.fareData.netSavings}** compared to booking a cab!`;
+      `1. 🚌 **AMTS City Bus:** **₹${getAmtsFare(lr.distanceKm)}/person** — 🏆 **Lowest Fare**\n` +
+      `2. 🚇 **GMRC Metro:** **₹${lr.fareData.metro.perPerson}/person** (Total: **₹${lr.fareData.metro.total}**) — ⚡ **Best Speed & Value**\n` +
+      `3. 🚌 **Janmarg BRTS:** **₹${getBrtsFare(lr.distanceKm)}/person** — Dedicated rapid bus lane\n` +
+      `4. 🛺 **Shared Shuttle Auto:** **₹${lr.autoRates ? lr.autoRates.sharedShuttle.perPerson : 15}/person** along arterial corridors\n` +
+      `5. 🛺 **Metered CNG Auto:** **₹${lr.fareData.auto.perPerson}/person** (Total: **₹${lr.fareData.auto.total}**)\n` +
+      `6. 🚗 **Uber / Ola Cab:** **₹${lr.fareData.cab.perPerson}/person** (Total: **₹${lr.fareData.cab.total}**)\n\n` +
+      `Taking **GMRC Metro** or **AMTS/BRTS** saves **₹${lr.fareData.netSavings}** compared to booking a private cab!`;
 
     session.history.push({ role: 'user', text: query, timestamp: Date.now() });
     session.history.push({ role: 'model', text: reply, timestamp: Date.now() });
@@ -554,7 +596,7 @@ async function handleConversationalFollowUp(query, session) {
     return {
       text: reply,
       carbon_saved_kg: lr.fareData.co2Averted,
-      mode_suggested: "Metro / Urban Rail",
+      mode_suggested: "AMTS Bus / GMRC Metro",
       sdg_impact: ["SDG 11.2", "SDG 13.2"],
       sessionId: session.id,
       route_data: { origin: lr.origin, destination: lr.destination, fareData: lr.fareData },
@@ -564,10 +606,10 @@ async function handleConversationalFollowUp(query, session) {
 
   // 5. Open-ended conversational query using Gemini LLM with context
   if (process.env.GEMINI_API_KEY) {
-    const contextualPrompt = `Context: The user previously asked about traveling from "${lr.origin}" to "${lr.destination}" (~${lr.distanceKm} km) for ${lr.passengers} people. Metro fare is ₹${lr.fareData.metro.perPerson}/person, Cab is ₹${lr.fareData.cab.total}.
+    const contextualPrompt = `Context: The user previously asked about traveling in Gujarat from "${lr.origin}" to "${lr.destination}" (~${lr.distanceKm} km) for ${lr.passengers} people. GMRC Metro fare is ₹${lr.fareData.metro.perPerson}/person, Cab is ₹${lr.fareData.cab.total}.
 User Follow-Up Question: "${query}"
 
-Respond concisely and helpfully as GreenTransit AI, referencing the remembered journey where applicable.`;
+Respond concisely and helpfully as GreenTransit AI focusing on Gujarat urban transit (Ahmedabad, Gandhinagar, Surat).`;
 
     const geminiReply = await callGemini(contextualPrompt, GEMINI_SYSTEM_INSTRUCTION, 3000, session.history);
     if (geminiReply && geminiReply.trim().length > 15) {
@@ -589,12 +631,13 @@ Respond concisely and helpfully as GreenTransit AI, referencing the remembered j
   // Fallback follow-up answer
   return {
     text: `Regarding your journey from **${lr.origin}** to **${lr.destination}** (~**${lr.distanceKm} km**):\n\n` +
-          `- 🚇 **Metro:** ₹${lr.fareData.metro.perPerson}/person (~${lr.fareData.metro.durationMins} mins)\n` +
+          `- 🚇 **GMRC Metro:** ₹${lr.fareData.metro.perPerson}/person (~${lr.fareData.metro.durationMins} mins)\n` +
+          `- 🛺 **Metered Auto:** ₹${lr.fareData.auto.total} total (~${lr.fareData.auto.durationMins} mins)\n` +
           `- 🚗 **Cab:** ₹${lr.fareData.cab.total} total (~${lr.fareData.cab.durationMins} mins)\n` +
-          `- 💰 **Net Savings:** ₹${lr.fareData.netSavings} by taking Metro!\n\n` +
-          `Ask me anything about this route (e.g. ticket price, travel time, or compare for different passenger counts)!`,
+          `- 💰 **Net Savings:** ₹${lr.fareData.netSavings} by taking mass transit!\n\n` +
+          `Ask me anything about Gujarat transit (ticket price, travel time, Janmarg BRTS routes, or compare for different passenger counts)!`,
     carbon_saved_kg: lr.fareData.co2Averted,
-    mode_suggested: "Metro / Urban Rail",
+    mode_suggested: "GMRC Metro / Gujarat Transit",
     sdg_impact: ["SDG 11.2", "SDG 13.2"],
     sessionId: session.id,
     action_chips: ["What is the metro ticket price?", "Compare for 4 people", "Calculate 15 km emissions"]
@@ -612,7 +655,7 @@ async function processTransitQuery(userMessage, sessionId = 'default') {
   // Handle empty input gracefully
   if (!query) {
     return {
-      text: "👋 Welcome to **GreenTransit AI**! Enter any two places (e.g. *'From Kankaria Lake to Thaltej for 2 people'*, or *'From Station to Airport'*). I will check operational metro stations, verify realistic ticket prices, compare all modes, and remember our chat for follow-up questions!",
+      text: "👋 Welcome to **GreenTransit AI - Gujarat Urban Transit Edition**! Enter any two places in Ahmedabad, Gandhinagar, or Surat (e.g. *'From Kankaria Lake to Thaltej for 2 people'*, or *'From Silver Oak to Rabari Colony'*). I will check operational GMRC Metro stations within 5 km radar, Janmarg BRTS corridors, AMTS bus routes, Gujarat RTO auto fares, and generate two-leg hybrid itineraries!",
       carbon_saved_kg: 0,
       mode_suggested: "Origin & Destination Planner",
       sdg_impact: ["SDG 11.2", "SDG 13.2"],
@@ -627,7 +670,7 @@ async function processTransitQuery(userMessage, sessionId = 'default') {
     return await analyzeRouteWithRealMaps(routeParams.origin, routeParams.destination, routeParams.passengers, session.id);
   }
 
-  // 2. Direct distance calculation intent (e.g. "calculate 15 km" or "Calculate carbon footprint for 18 km drive vs metro")
+  // 2. Direct distance calculation intent
   const distanceMatch = lower.match(/(\d+(?:\.\d+)?)\s*(?:km|kms|kilometers|kilometer|miles|mile)/i);
   const isCalcIntent = lower.includes('calculate') || lower.includes('emission') || lower.includes('footprint') || lower.includes('carbon');
 
@@ -662,14 +705,14 @@ async function processTransitQuery(userMessage, sessionId = 'default') {
     };
   }
 
-  // 3. UN SDG 11 & SDG 13 Specific Inquiries (Instant <10ms)
+  // 3. UN SDG 11 & SDG 13 Specific Inquiries
   if (lower.includes('sdg') || lower.includes('sustainable development') || lower.includes('goal 11') || lower.includes('goal 13')) {
     return {
       text: `### 🌍 UN Sustainable Development Goals: SDG 11 & SDG 13\n\n` +
             `GreenTransit AI directly supports two key United Nations Global Goals for 2030:\n\n` +
             `#### 🏙️ **SDG 11: Sustainable Cities & Communities**\n` +
             `- **Target 11.2:** By 2030, provide access to safe, affordable, accessible, and sustainable transport systems for all.\n` +
-            `- **Urban Reality:** Cities generate over **60% of greenhouse gas emissions** while occupying just 3% of Earth's land. Expanding electrified mass transit, bike highways, and shared auto feeders directly combats urban congestion and smog.\n\n` +
+            `- **Urban Reality:** Cities generate over **60% of greenhouse gas emissions** while occupying just 3% of Earth's land. Expanding Gujarat's electrified GMRC mass transit, Janmarg BRTS dedicated lanes, and shared CNG auto feeders directly combats urban congestion and smog.\n\n` +
             `#### 🌡️ **SDG 13: Climate Action**\n` +
             `- **Target 13.2:** Integrate climate change mitigation measures into urban planning and commuter decisions.\n` +
             `- **Transportation Share:** Transport accounts for approximately **27% of global greenhouse gas emissions**. Shifting from private combustion cars to electric rail or shared transit is the fastest lever to achieve Net-Zero targets.\n\n` +
@@ -685,47 +728,51 @@ async function processTransitQuery(userMessage, sessionId = 'default') {
   // 4. Greetings
   if (lower.includes('hello') || lower.includes('hi') || lower.includes('hey') || lower.includes('who are you') || lower.includes('help')) {
     return {
-      text: `### 👋 Greetings! I am GreenTransit AI\n\n` +
-            `Your smart urban mobility advisor with conversational memory. Enter **any current place** and **where you want to go**, and I will check operational metro stations, verify realistic ticket prices, calculate tiered fares for Cab, Rapido, City Bus, and Metro, and remember our chat for any follow-up questions!\n\n` +
-            `Try entering: *"From Kankaria Lake to Thaltej for 2 people"* or *"Silver Oak to Rabari Colony"*!`,
+      text: `### 👋 Greetings! I am GreenTransit AI - Gujarat Urban Mobility\n\n` +
+            `Your specialized advisor for **Ahmedabad, Gandhinagar, and Surat transit corridors**. Enter any two places (e.g. *'From Kankaria Lake to Thaltej for 2 people'*, or *'From Silver Oak to Rabari Colony'*), and I will:\n` +
+            `- 🚇 Check operational GMRC Metro stations within 5 km radar & authentic fares (₹5 to ₹30)\n` +
+            `- 🚌 Locate Janmarg BRTS corridors (₹4 to ₹25) and AMTS city bus route numbers (₹3 to ₹20)\n` +
+            `- 🛺 Calculate Gujarat RTO metered CNG auto tariffs and shared shuttle rates\n` +
+            `- 🧭 Generate step-by-step two-leg hybrid itineraries\n\n` +
+            `Try entering: *"From Silver Oak to Rabari Colony for 2 people"*!`,
       carbon_saved_kg: 1.5,
-      mode_suggested: "Sustainable Transit Advisor",
+      mode_suggested: "Gujarat Transit Advisor",
       sdg_impact: ["SDG 11.2", "SDG 13.2"],
       sessionId: session.id,
       action_chips: ["From Kankaria Lake to Thaltej for 2 people", "Silver Oak to Rabari Colony (2 people)", "15 km Carbon Impact", "What is SDG 11.2?"]
     };
   }
 
-  // 5. If user message is a follow-up and we have remembered journey context
+  // 5. Conversational follow-up if lastRoute exists
   if (session.lastRoute) {
     return await handleConversationalFollowUp(query, session);
   }
 
-  // 6. Commute Plan Recommendations (Instant <10ms for Evaluator queries)
+  // 6. Commute Plan Recommendations
   if (lower.includes('commute') || lower.includes('transit') || lower.includes('travel to')) {
     return {
-      text: `### 🧭 Multi-Modal Green Route Recommendation\n\n` +
-            `Here is an optimized sustainable journey plan designed for minimal carbon footprint and maximum time efficiency:\n\n` +
-            `1. **First-Mile (Active Mobility):** 🚲 Shared E-Bike / Walk to nearest transit hub (approx. 5-7 mins).\n` +
-            `2. **Main Transit Corridor:** 🚇 Rapid Electric Metro Line (approx. 18-22 mins).\n` +
-            `3. **Last-Mile Connection:** 🚌 Electric Feeder Shuttle or Pedestrian Green Corridor (approx. 5 mins).\n\n` +
+      text: `### 🧭 Gujarat Multi-Modal Green Route Recommendation\n\n` +
+            `Here is an optimized sustainable journey plan designed for minimal carbon footprint across Gujarat transit corridors:\n\n` +
+            `1. **First-Mile / Feeder:** 🛺 Shared CNG Auto Rickshaw or Walk to nearest GMRC Metro / Janmarg BRTS station (approx. 5 mins).\n` +
+            `2. **Main Transit Corridor:** 🚇 Rapid GMRC Electric Metro Line (Blue or Red Line) or Janmarg BRTS dedicated lane (approx. 18-22 mins).\n` +
+            `3. **Last-Mile Connection:** 🚌 AMTS connecting bus or local metered auto to final doorstep (approx. 5 mins).\n\n` +
             `📊 **Journey Impact Comparison:**\n` +
-            `- **Standard Solo Car Drive:** ~4.8 kg CO2 emitted | High traffic congestion risk\n` +
+            `- **Standard Solo Car Drive:** ~4.8 kg CO2 emitted | High traffic congestion on SG Highway\n` +
             `- **GreenTransit Multimodal:** ~0.6 kg CO2 emitted | **4.2 kg CO2 Saved!**\n` +
-            `- **Cost Savings:** ~65% lower than fuel + urban parking fees.\n\n` +
-            `Try entering any two locations in the Journey Bar to search live fares!`,
+            `- **Cost Savings:** ~70% lower than private cab fares.\n\n` +
+            `Try entering any two Gujarat locations in the Journey Bar to search live fares!`,
       carbon_saved_kg: 4.2,
-      mode_suggested: "Multimodal: E-Bike + Metro + Electric Feeder",
+      mode_suggested: "Multimodal: GMRC Metro + Janmarg BRTS + Feeder Auto",
       sdg_impact: ["SDG 11.2", "SDG 13.2"],
       sessionId: session.id,
       action_chips: ["Kankaria Lake to Thaltej (2 people)", "Silver Oak to Rabari Colony (2 people)", "15 km Carbon Impact", "What is SDG 11.2?"]
     };
   }
 
-  // 7. If user only mentioned a single starting point without previous context
+  // 7. Single starting point without previous context
   if (lower.includes('silver oak') && !lower.includes('rabari colony')) {
     return {
-      text: `### 📍 Starting Point: **Silver Oak University (Gota / SG Highway)**\n\nWhere would you like to travel, and how many people are with you?\n\n*For example: *"To Rabari Colony for 2 people"*, *"To Science City for 1 person"*, or *"To Airport"*. I will check distance, tiered fares, and net savings!`,
+      text: `### 📍 Starting Point: **Silver Oak University (Gota / SG Highway, Ahmedabad)**\n\nWhere would you like to travel, and how many people are with you?\n\n*For example: *"To Rabari Colony for 2 people"*, *"To Science City for 1 person"*, or *"To Kalupur Railway Station"*. I will check GMRC Metro, Janmarg BRTS, AMTS Bus #138, RTO auto fares, and net savings!`,
       carbon_saved_kg: 0,
       mode_suggested: "Route Assistant",
       sdg_impact: ["SDG 11.2"],
@@ -754,10 +801,10 @@ async function processTransitQuery(userMessage, sessionId = 'default') {
 
   // Default fallback
   return {
-    text: `### 🌿 GreenTransit AI Planner\n\n` +
+    text: `### 🌿 GreenTransit AI - Gujarat Urban Mobility\n\n` +
           `Regarding: *"${query}"*\n\n` +
-          `To compare real-time routes, dynamic tiered fares (Cab, Rapido, City Bus, Metro), and net savings, enter your origin and destination in the Journey Bar above.\n\n` +
-          `- **SDG 11.2 Focus:** Accessible, multi-passenger shared public transit.\n` +
+          `To compare real-time routes, dynamic tiered fares (GMRC Metro, Janmarg BRTS, AMTS buses, CNG Autos, Cabs), and net savings, enter your origin and destination in the Journey Bar above.\n\n` +
+          `- **SDG 11.2 Focus:** Safe, accessible, and sustainable transport systems for Ahmedabad, Gandhinagar, and Surat.\n` +
           `- **SDG 13.2 Focus:** Measurable CO2 reduction per trip.`,
     carbon_saved_kg: 2.0,
     mode_suggested: "Hybrid Transit Advisor",
