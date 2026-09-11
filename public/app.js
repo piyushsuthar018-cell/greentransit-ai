@@ -74,21 +74,21 @@ document.addEventListener('DOMContentLoaded', () => {
           const cells = trimmed.slice(1, -1).split('|').map(c => c.trim());
           if (!inTable) {
             inTable = true;
-            tableHtml += '<thead><tr>' + cells.map(c => `<th>${c}</th>`).join('') + '</tr></thead><tbody>';
+            tableHtml += '<div class="table-wrapper"><table class="transit-table"><thead><tr>' + cells.map(c => `<th>${c}</th>`).join('') + '</tr></thead><tbody>';
           } else {
             tableHtml += '<tr>' + cells.map(c => `<td>${c}</td>`).join('') + '</tr>';
           }
         } else {
           if (inTable) {
             inTable = false;
-            tableHtml += '</tbody></table>';
+            tableHtml += '</tbody></table></div>';
             outputLines.push(tableHtml);
           }
           outputLines.push(line);
         }
       }
       if (inTable) {
-        tableHtml += '</tbody></table>';
+        tableHtml += '</tbody></table></div>';
         outputLines.push(tableHtml);
       }
       html = outputLines.join('\n');
@@ -208,13 +208,7 @@ document.addEventListener('DOMContentLoaded', () => {
         badgeHtml = `<div class="route-header-pill">🌱 Saves ${carbonSaved} kg CO2 vs Driving Solo</div>`;
       }
 
-      // Visual cards if available
-      let visualCardsHtml = '';
-      if (routeData) {
-        visualCardsHtml = createRouteCardsHtml(routeData);
-      }
-
-      body.innerHTML = badgeHtml + visualCardsHtml + renderMarkdown(text);
+      body.innerHTML = badgeHtml + renderMarkdown(text);
 
       // Action chips
       if (actionChips && actionChips.length > 0) {

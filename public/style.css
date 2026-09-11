@@ -581,6 +581,57 @@ body {
   color: #a7f3d0;
 }
 
+/* Modern Glassmorphic Side-by-Side Comparison Table */
+.table-wrapper {
+  width: 100%;
+  overflow-x: auto;
+  margin: 14px 0;
+  border-radius: 10px;
+  border: 1px solid rgba(16, 185, 129, 0.25);
+  background: rgba(8, 20, 16, 0.85);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(8px);
+}
+
+.transit-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.86rem;
+  text-align: left;
+  line-height: 1.5;
+}
+
+.transit-table th {
+  background: rgba(16, 185, 129, 0.15);
+  color: #34d399;
+  font-family: var(--font-head);
+  font-weight: 700;
+  font-size: 0.84rem;
+  padding: 10px 14px;
+  border-bottom: 2px solid rgba(16, 185, 129, 0.35);
+  white-space: nowrap;
+  letter-spacing: 0.02em;
+}
+
+.transit-table td {
+  padding: 11px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  color: #e2e8f0;
+  vertical-align: middle;
+}
+
+.transit-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.transit-table tbody tr:hover {
+  background: rgba(16, 185, 129, 0.07);
+}
+
+.transit-table strong {
+  color: #f8fafc;
+}
+
 /* Chips tray */
 .chips-tray {
   display: flex;

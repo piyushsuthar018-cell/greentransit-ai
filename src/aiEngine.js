@@ -402,40 +402,48 @@ async function analyzeRouteWithRealMaps(origin, destination, passengers = 1, ses
       `🎯 **Station Radar Status:** ${metroCheck.radarStatus || 'Within 5 km Metro Radar'}\n\n`;
   }
 
-  // 6. Construct Comprehensive Gujarat Multi-Modal Markdown Output
+  // 6. Construct Clean & Structured Gujarat Multi-Modal Markdown Output (Methods -> Comparison -> Conclusion)
   const markdownText = `### 📍 Route: **${origin}** to **${destination}** (~**${distanceKm} km**)\n\n` +
-    `👥 **Travelers:** **${p} ${p > 1 ? 'people' : 'person'}** | 🛣️ **Gujarat Transit Corridor:** \`${corridorName}\`\n\n` +
-    metroBanner +
-    `#### 🧭 Step-by-Step Hybrid Route Recommendation:\n` +
-    `1. 🚶/🛺 **Leg 1 (Mass Transit):** ${hybridLeg1}\n` +
-    `2. 🛺 **Leg 2 (Last-Mile Feeder):** ${hybridLeg2}\n\n` +
+    `👥 **Travelers:** **${p} ${p > 1 ? 'people' : 'person'}** &nbsp;|&nbsp; 🛣️ **Gujarat Transit Corridor:** \`${corridorName}\`\n\n` +
     `---\n\n` +
-    `### 📊 Gujarat Multi-Modal Transit Comparison\n\n` +
-    `| Commute Mode | Route Details (Lines & Feeder) | Estimated Cost | Travel Time | CO₂ Footprint |\n` +
-    `| :--- | :--- | :--- | :--- | :--- |\n` +
-    `| 🚌 **Multi-Modal (AMTS/BRTS + Auto)** | ${busName} + Feeder Rickshaw | **₹${multiModalTotal}** | **${Math.round(fareData.bus.durationMins * 0.9)} mins** | **${Number((fareData.bus.co2 * 1.2).toFixed(3))} kg** |\n` +
-    `| 🚇 **GMRC Metro + Auto Feeder** | ${metroCheck.lineName || 'Blue/Red Line'} + Feeder Auto | **₹${metroFeederCost}** | **${fareData.metro.durationMins} mins** | **${fareData.metro.co2} kg** |\n` +
-    `| 🛺/🚗 **Direct Auto / Cab** | Metered CNG Auto / Solo Cab | **₹${directAutoOrCab}** | **${fareData.auto.durationMins} mins** | **${fareData.auto.co2} kg** |\n\n` +
-    `#### 📋 Mode-by-Mode Fare & Speed Breakdown:\n\n` +
+    `### 1️⃣ Available Transit Methods\n\n` +
+    `🚇 **1. GMRC Metro Rail (+ Feeder Auto)**\n` +
+    `- **Station & Route:** ${metroCheck.hasMetro ? `**${metroCheck.originStation}** ➔ **${metroCheck.destStation}** (${metroCheck.lineName})` : `Feeder connection to nearest GMRC Metro corridor`}\n` +
+    `- **Ticket Cost:** **₹${fareData.metro.perPerson}/person** (Total: **₹${fareData.metro.total}**) &nbsp;|&nbsp; ⏱️ **Time:** ~**${fareData.metro.durationMins} mins** &nbsp;|&nbsp; 🌱 **CO₂:** **${fareData.metro.co2} kg**\n` +
+    `- **Station Radar Status:** ${metroCheck.radarStatus || 'Direct Station Access'}\n\n` +
+    `🚌 **2. Janmarg BRTS / AMTS City Bus (+ Feeder)**\n` +
+    `- **Route & Lines:** **${busName}** (${gujaratTransit.matchedAmts ? `Route ${gujaratTransit.matchedAmts.routeNo}` : (gujaratTransit.matchedBrts ? gujaratTransit.matchedBrts.line : 'Dedicated Municipal Corridor')})\n` +
+    `- **Ticket Cost:** **₹${busFare}/person** (Total: **₹${busFare * p}**) &nbsp;|&nbsp; ⏱️ **Time:** ~**${fareData.bus.durationMins} mins** &nbsp;|&nbsp; 🌱 **CO₂:** **${fareData.bus.co2} kg**\n` +
+    `- **Connection:** Board at nearest arterial station with local auto transfer\n\n` +
+    `🛺 **3. Auto-Rickshaw (Gujarat RTO CNG & Shared)**\n` +
+    `- **Metered CNG Auto (RTO Tariff):** **₹${autoRates.metered.singleFare}** (₹20 base first 1.25 km + ₹14.50/km thereafter; Total for ${p} ${p > 1 ? 'people' : 'person'}: **₹${autoRates.metered.total}** across ${autoRates.autosNeeded} ${autoRates.autosNeeded > 1 ? 'autos' : 'auto'})\n` +
+    `- **Shared Shuttle Auto (Chhakda / Tuk-Tuk):** **₹${autoRates.sharedShuttle.perPerson}/person** flat rate along major arterials (SG Highway, Naroda–Kalupur, Ashram Road)\n` +
+    `- **Ride-Hailing Auto (Uber/Ola Auto):** **₹${autoRates.rideHailingAuto.singleFare}** (Base ₹25 + ₹14/km + ₹10 booking fee)\n` +
+    `- ⏱️ **Time:** ~**${fareData.auto.durationMins} mins** &nbsp;|&nbsp; 🌱 **CO₂:** **${fareData.auto.co2} kg**\n\n` +
+    `🚗 **4. Ride-Hailing Cab (Uber / Ola AC)**\n` +
+    `- **Tariff:** Total **₹${fareData.cab.total}** (₹${fareData.cab.perPerson}/person for ${p} ${p > 1 ? 'people' : 'person'})\n` +
+    `- ⏱️ **Time:** ~**${fareData.cab.durationMins} mins** (subject to arterial traffic) &nbsp;|&nbsp; 🌱 **CO₂:** **${fareData.cab.co2} kg**\n\n` +
+    `🏍️ **5. Bike Taxi (Rapido)**\n` +
+    `- **Fare:** ${p === 1 ? `**₹${fareData.bike.fare}** (Solo quick commute)` : `**₹${fareData.bike.total}** (${p} separate bikes, ₹${fareData.bike.perPerson}/person)`}\n` +
+    `- ⏱️ **Time:** ~**${fareData.bike.durationMins} mins** &nbsp;|&nbsp; 🌱 **CO₂:** **${fareData.bike.co2} kg**\n\n` +
+    `---\n\n` +
+    `### 2️⃣ Side-by-Side Mode Comparison\n\n` +
     `| Mode | Estimated Fare | Travel Time | CO₂ Footprint |\n` +
     `| :--- | :--- | :--- | :--- |\n` +
-    `| 🚇 **Metro / Urban Rail** | **${metroFareDisplay}** | **${fareData.metro.durationMins} mins** | **${fareData.metro.co2} kg** |\n` +
-    `| 🚗 **Cab (Uber/Ola)** | **${cabFareDisplay}** | **${fareData.cab.durationMins} mins** | **${fareData.cab.co2} kg** |\n` +
-    `| 🏍️ **Bike Taxi (Rapido)** | **${bikeFareDisplay}** | **${fareData.bike.durationMins} mins** | **${fareData.bike.co2} kg** |\n` +
-    `| 🚌 **City Bus (DTC/AMTS)** | **${busFareDisplay}** | **${fareData.bus.durationMins} mins** | **${fareData.bus.co2} kg** |\n\n` +
+    `| 🚇 **GMRC Metro (+ Feeder Auto)** | **${metroFareDisplay}** | **${fareData.metro.durationMins} mins** | **${fareData.metro.co2} kg** |\n` +
+    `| 🚌 **Janmarg BRTS / AMTS City Bus** | **${busFareDisplay}** | **${fareData.bus.durationMins} mins** | **${fareData.bus.co2} kg** |\n` +
+    `| 🛺 **Auto-Rickshaw (CNG Meter / Shared)** | **₹${autoRates.metered.total}** | **${fareData.auto.durationMins} mins** | **${fareData.auto.co2} kg** |\n` +
+    `| 🚗 **Cab (Uber/Ola AC)** | **${cabFareDisplay}** | **${fareData.cab.durationMins} mins** | **${fareData.cab.co2} kg** |\n` +
+    `| 🏍️ **Bike Taxi (Rapido)** | **${bikeFareDisplay}** | **${fareData.bike.durationMins} mins** | **${fareData.bike.co2} kg** |\n\n` +
     `---\n\n` +
-    `### 💰 Net Savings & Climate Impact Summary (SDG 11 & SDG 13)\n` +
-    `- 💵 **Wallet Savings:** Choosing **GMRC Metro / Multi-Modal Transit** over a private cab saves **₹${fareData.netSavings}** for your group!\n` +
-    `- 🌿 **Emissions Avoided (SDG 13.2):** **${fareData.co2Averted} kg CO₂** prevented vs private combustion vehicle.\n` +
-    `- 🏙️ **Sustainable Communities (SDG 11.2):** Enhances urban accessibility in Ahmedabad/Gandhinagar by utilizing high-capacity GMRC Metro and Janmarg BRTS dedicated bus corridors.\n\n` +
-    `---\n\n` +
-    `#### 🛺 Gujarat Auto-Rickshaw Rate Engine Breakdown:\n` +
-    `- 🛺 **Metered CNG Auto (RTO Tariff):** **₹${autoRates.metered.singleFare}** (Tariff: ₹20 base for 1.25 km + ₹14.50/km thereafter; Total for ${p} ${p > 1 ? 'people' : 'person'}: **₹${autoRates.metered.total}** across ${autoRates.autosNeeded} ${autoRates.autosNeeded > 1 ? 'autos' : 'auto'})\n` +
-    `- 🛺 **Shared Shuttle Auto (Chhakda / Tuk-Tuk):** **₹${autoRates.sharedShuttle.perPerson}/person** flat rate along major arterials (SG Highway, Naroda-Kalupur, Ashram Road)\n` +
-    `- 📱 **Ride-Hailing Auto (Uber/Ola Auto):** **₹${autoRates.rideHailingAuto.singleFare}** (Base ₹25 + ₹14/km + ₹10 booking fee)\n` +
-    `- 🚇 **HYBRID TRANSIT / Metro Status:** ${metroCheck.feasible ? '✅ **Take Metro (Feasible & Recommended)**' : '⚠️ **Detour Required**'} — *${metroCheck.reason}*\n` +
-    `- 🚗 **Uber / Ola Cab:** Total **₹${fareData.cab.total}** (~**${fareData.cab.durationMins} mins**, AC comfort)\n` +
-    `- 🏍️ **Rapido Bike Taxi:** ${p === 1 ? `**₹${fareData.bike.fare}** (~**${fareData.bike.durationMins} mins**)` : `*Available as ${p} separate bikes (₹${fareData.bike.total} total)*`}\n\n` +
+    `### 3️⃣ Conclusion & Green Recommendation\n\n` +
+    `- 🏆 **Recommended Choice:** ${metroCheck.feasible ? 'Take **GMRC Metro** (Fastest, zero traffic signals, lowest carbon footprint)' : 'Take **Janmarg BRTS / AMTS Bus + Feeder Rickshaw** (Direct corridor transit)'}\n` +
+    `- 💵 **Net Savings:** Choosing **${metroCheck.feasible ? 'Metro' : 'Public Transit'}** over a **Cab** saves **₹${fareData.netSavings}** for your journey!\n` +
+    `- 🌿 **Emissions Avoided (SDG 13.2):** **${fareData.co2Averted} kg CO₂** saved vs private ride-hailing.\n` +
+    `- 🏙️ **Sustainable Communities (SDG 11.2):** Reduces congestion along ${corridorName} and supports cleaner air quality.\n` +
+    `- 🧭 **HYBRID TRANSIT Itinerary:**\n` +
+    `  1. **Leg 1 (Mass Transit):** ${hybridLeg1}\n` +
+    `  2. **Leg 2 (Last-Mile Feeder):** ${hybridLeg2}\n\n` +
     `🗺️ **[View Live Navigation & Traffic on Google Maps](${mapsUrl})**`;
 
   // 7. Save in session context for conversational memory
